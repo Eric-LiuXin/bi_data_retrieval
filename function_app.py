@@ -1,28 +1,43 @@
-import azure.functions as func
-import datetime
 import json
-import logging
+
+import azure.functions as func
+from azure.functions.decorators.http import HttpMethod
+
+from bi_requests import BI_REQUESTS
 
 app = func.FunctionApp()
 
-@app.route(route="eric_http", auth_level=func.AuthLevel.ANONYMOUS)
-def test(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
 
-    name = req.params.get('name')
-    if not name:
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            pass
-        else:
-            name = req_body.get('name')
+@app.route(
+    route="data_retrieval",
+    auth_level=func.AuthLevel.ANONYMOUS,
+    methods=[
+        HttpMethod.POST,
+    ],
+)
+def data_retrieval(req: func.HttpRequest) -> func.HttpResponse:
+    res = True
+    msg = ""
+    data = {}
 
-    if name:
-        # return func.HttpResponse(f"Hello, {name}. This HTTP triggered function executed successfully.")
-        return func.HttpResponse(json.JSONDecoder({"avc":"aaa"}))
-    else:
-        return func.HttpResponse(
-             "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response.",
-             status_code=200
-        )
+    try:
+        post_data = req.get_json()
+
+        request_id = post_data.get("_id", None)
+        if not request_id:
+            raise ValueError(f"Request parameter error, [_id] is required.")
+
+        BIRequest = BI_REQUESTS.get(request_id, None)
+        if not BIRequest:
+            raise ValueError(f"Not Supported request ID [{request_id}].")
+
+        query_dict = post_data.get("query", {})
+
+        _request = BIRequest(query_dict)
+
+        data = _request.run()
+    except Exception as e:
+        res = False
+        msg = str(e)
+
+    return func.HttpResponse(json.dumps({"success": res, "msg": msg, "data": data}))
